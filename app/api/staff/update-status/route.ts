@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, AllocationStatus } from "@prisma/client";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 
@@ -16,10 +16,11 @@ export async function POST(request: Request) {
     const { payload } = await jwtVerify(token, encodedKey, { algorithms: ["HS256"] });
     const staffUsername = payload.username as string;
 
-    // FIX: Correctly parse the incoming FormData we set up on the frontend
     const formData = await request.formData();
     const allocationId = formData.get("allocationId") as string;
-    const newStatus = formData.get("newStatus") as string;
+    
+    // FIX: Explicitly cast the incoming string as the Prisma AllocationStatus Enum
+    const newStatus = formData.get("newStatus") as AllocationStatus;
 
     if (!allocationId || !newStatus) {
       return NextResponse.json({ message: "Missing parameters" }, { status: 400 });
@@ -32,12 +33,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Allocation not found" }, { status: 404 });
     }
 
-    // Case-insensitive check just in case "Staff_1" was uploaded as "staff_1"
+    // Case-insensitive check
     if (allocation.staffID.toLowerCase() !== staffUsername.toLowerCase()) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    // Process the status update
+    // Process the status update safely
     await prisma.allocation.update({
       where: { id: allocationId },
       data: { status: newStatus }
