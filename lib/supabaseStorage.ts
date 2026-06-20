@@ -3,18 +3,11 @@ import { supabase } from "./supabaseClient";
 const BUCKET_NAME = "all-itrs";
 
 export async function uploadFile(file: File, pan: string, assessmentYear: string, folder: 1 | 2 | 3 | 4) {
-  // FIX: Removed `${BUCKET_NAME}/` from the filePath. 
-  // Supabase already knows the bucket from the `.from(BUCKET_NAME)` call.
   const filePath = `${pan}/${assessmentYear}/folder-${folder}/${file.name}`;
-  
-  // upsert: true ensures that if they upload a file with the same name, it overwrites it instead of crashing
   const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file, {
     upsert: true 
   });
-
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
   return data;
 }
 
@@ -22,4 +15,28 @@ export async function getPublicUrl(pan: string, assessmentYear: string, folder: 
   const filePath = `${pan}/${assessmentYear}/folder-${folder}/${filename}`;
   const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
   return data.publicUrl;
+}
+
+// NEW: Allows Admin to scan all folders for a specific allocation
+export async function listFiles(pan: string, assessmentYear: string) {
+  const allFiles = [];
+  for (let i = 1; i <= 4; i++) {
+    const path = `${pan}/${assessmentYear}/folder-${i}`;
+    const { data, error } = await supabase.storage.from(BUCKET_NAME).list(path);
+    if (data && data.length > 0) {
+      data.forEach(f => {
+        if (f.name !== '.emptyFolderPlaceholder') {
+          const filePath = `${path}/${f.name}`;
+          const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+          allFiles.push({
+            folder: i,
+            name: f.name,
+            // Appending ?download= forces the browser to save the file rather than open it in a new tab
+            url: `${urlData.publicUrl}?download=`
+          });
+        }
+      });
+    }
+  }
+  return allFiles;
 }
