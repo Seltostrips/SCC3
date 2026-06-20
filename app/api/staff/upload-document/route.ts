@@ -19,28 +19,32 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const allocationId = formData.get("allocationId") as string;
-    const file = formData.get("file") as File;
     const folderStr = formData.get("folder") as string;
 
-    if (!allocationId || !file || !folderStr) {
-      return NextResponse.json({ message: "Missing required file data" }, { status: 400 });
-    }
+    if (!allocationId || !folderStr) return NextResponse.json({ message: "Missing data" }, { status: 400 });
 
     const folder = parseInt(folderStr);
-    if (![1, 2, 3, 4].includes(folder)) {
-      return NextResponse.json({ message: "Invalid folder selection" }, { status: 400 });
-    }
-
-    // Security Verification: Ensure the allocation belongs to this staff member
     const allocation = await prisma.allocation.findUnique({ where: { id: allocationId } });
     if (!allocation || allocation.staffID.toLowerCase() !== staffUsername.toLowerCase()) {
       return NextResponse.json({ message: "Forbidden Access" }, { status: 403 });
     }
 
-    // Execute the Supabase Storage Upload
-    await uploadFile(file, allocation.clientPAN, allocation.assessmentYear, folder as 1 | 2 | 3 | 4);
+    // MULTIPLE FILES FIX: Loop through form data and grab anything that is a file
+    const files: File[] = [];
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith("file_") && value instanceof File) {
+        files.push(value);
+      }
+    }
 
-    return NextResponse.json({ message: "Document uploaded to Supabase successfully!" });
+    if (files.length === 0) return NextResponse.json({ message: "No files attached" }, { status: 400 });
+
+    // Upload sequentially to Supabase
+    for (const file of files) {
+      await uploadFile(file, allocation.clientPAN, allocation.assessmentYear, folder as 1 | 2 | 3 | 4);
+    }
+
+    return NextResponse.json({ message: `Successfully uploaded ${files.length} document(s)!` });
   } catch (error: any) {
     console.error("Document upload crash:", error);
     return NextResponse.json({ message: error.message || "Internal server error" }, { status: 500 });
