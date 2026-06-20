@@ -87,6 +87,49 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminMessage("Processing password reset...");
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminMessage('Password updated successfully!');
+        setNewPassword('');
+      } else {
+        setAdminMessage(data.error || 'Failed to update password');
+      }
+    } catch (err) {
+      setAdminMessage('An error occurred.');
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminMessage("Creating new admin...");
+    try {
+      const res = await fetch('/api/admin/create-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: newAdminUsername, password: newAdminPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminMessage('Admin created successfully!');
+        setNewAdminUsername('');
+        setNewAdminPassword('');
+      } else {
+        setAdminMessage(data.error || 'Failed to create admin');
+      }
+    } catch (err) {
+      setAdminMessage('An error occurred.');
+    }
+  };
+
   if (loading) return <div className="text-center py-8">Loading dashboard...</div>;
   if (error) return <div className="text-center py-8 text-red-500">Error: {error}</div>;
 
