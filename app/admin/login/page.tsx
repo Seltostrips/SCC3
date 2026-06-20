@@ -3,79 +3,86 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function AdminLoginPage() {
+export default function FirmPortalLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setError("");
+    setLoading(true);
 
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ username, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
 
-    const data = await response.json();
+      const data = await res.json();
 
-    if (response.ok) {
-      // In a real app, you would set a session cookie or token here
-      console.log("Admin Login successful:", data.user);
-      if (data.user.role === "ADMIN") {
-        router.push("/admin/dashboard");
+      if (res.ok) {
+        // Smart Routing: Direct the user based on their specific Role
+        if (data.user?.role === "STAFF") {
+          router.push("/staff/dashboard");
+        } else if (data.user?.role === "ADMIN") {
+          router.push("/admin/dashboard");
+        } else {
+          setError("Unauthorized access. Clients must use the dedicated Client Portal.");
+        }
       } else {
-        setError("Unauthorized access");
+        setError(data.message || "Invalid credentials");
       }
-    } else {
-      setError(data.message || "Login failed");
+    } catch (err) {
+      setError("An error occurred during authentication.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6 text-center">Admin Login</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="username" className="block text-gray-700 text-sm font-bold mb-2">
-              Username
-            </label>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md border border-slate-200">
+        <h1 className="text-2xl font-bold text-center mb-2 text-slate-900">Internal Firm Portal</h1>
+        <p className="text-center text-slate-500 text-sm mb-6">Secure access for Admins and Staff Auditors</p>
+        
+        {error && (
+          <div className="bg-rose-50 text-rose-600 p-3 rounded-lg mb-4 text-sm font-medium border border-rose-200">
+            {error}
+          </div>
+        )}
+        
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div>
+            <label className="block text-slate-700 text-sm font-bold mb-2">Username / Staff ID</label>
             <input
               type="text"
-              id="username"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
               required
             />
           </div>
-          <div className="mb-6">
-            <label htmlFor="password" className="block text-gray-700 text-sm font-bold mb-2">
-              Password
-            </label>
+          <div>
+            <label className="block text-slate-700 text-sm font-bold mb-2">Password</label>
             <input
               type="password"
-              id="password"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
               required
             />
           </div>
-          {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
-          <div className="flex items-center justify-between">
-            <button
-              type="submit"
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            >
-              Sign In
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-slate-900 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-slate-800 transition-colors disabled:bg-slate-400"
+          >
+            {loading ? "Authenticating..." : "Secure Sign In"}
+          </button>
         </form>
       </div>
     </div>
