@@ -31,6 +31,9 @@ export default function AdminDashboard() {
   const [newAdminUsername, setNewAdminUsername] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAllocations();
@@ -62,6 +65,9 @@ export default function AdminDashboard() {
     }
   };
 
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const handleStatusUpdate = async (allocationId: string, newStatus: string, comments?: string) => {
     try {
       const response = await fetch("/api/admin/update-allocation", {
@@ -216,7 +222,38 @@ export default function AdminDashboard() {
           </table>
         </div>
       )}
-
+{/* Upload Allocations Section */}
+      <div className="mt-8 bg-white p-6 rounded-lg shadow-md mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-semibold">Upload Allocations CSV</h2>
+          <button
+            onClick={downloadTemplate}
+            className="text-blue-600 hover:text-blue-800 underline text-sm font-medium"
+          >
+            Download CSV Template
+          </button>
+        </div>
+        <form onSubmit={handleFileUpload} className="flex flex-col sm:flex-row items-center gap-4">
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded border file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+          />
+          <button
+            type="submit"
+            disabled={!uploadFile || uploading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded whitespace-nowrap"
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </button>
+        </form>
+        {uploadMessage && (
+          <p className={`mt-3 text-sm font-medium ${uploadMessage.includes("successful") ? "text-green-600" : "text-red-600"}`}>
+            {uploadMessage}
+          </p>
+        )}
+      </div>
       {/* Admin Settings Section */}
       <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-2xl font-semibold mb-4">Admin Settings</h2>
