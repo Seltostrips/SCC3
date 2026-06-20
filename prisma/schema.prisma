@@ -50,4 +50,5 @@ model Allocation {
 
   @@unique([clientPAN, assessmentYear])
   @@map("allocations")
+@@unique([clientPAN, staffID, assessmentYear])
 }
