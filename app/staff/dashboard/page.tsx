@@ -1,196 +1,127 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// import { getStaffInfo } from "@/lib/auth"; // Assuming an auth utility
-import { uploadFile } from "@/lib/supabaseStorage";
+import { useRouter } from "next/navigation";
+
+interface ClientData {
+  name: string;
+}
 
 interface Allocation {
   id: string;
   clientPAN: string;
-  staffID: string;
   assessmentYear: string;
   status: string;
-  billingStatus: string;
-  comments?: string;
+  client: ClientData;
 }
-
-const dummyStaffID = "STAFF001"; // Replace with dynamic staff ID from auth
 
 export default function StaffDashboard() {
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    fetchStaffAllocations();
+    fetchAllocations();
   }, []);
 
-  const fetchStaffAllocations = async () => {
+  const fetchAllocations = async () => {
     try {
-      setLoading(true);
-      // In a real app, this would be an authenticated API call
-      // For now, we'll simulate an API call
-      const response = await fetch(`/api/staff/allocations?staffId=${dummyStaffID}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch allocations");
+      const response = await fetch("/api/staff/allocations");
+      if (response.ok) {
+        const data = await response.json();
+        setAllocations(data);
       }
-      const data: Allocation[] = await response.json();
-      setAllocations(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileUploadAndStatusUpdate = async (
-    allocationId: string,
-    clientPAN: string,
-    assessmentYear: string,
-    currentStatus: string,
-    targetFolder: 1 | 2 | 3 | 4,
-    newStatus: string,
-    comments?: string
-  ) => {
-    if (!fileToUpload) {
-      alert("Please select a file to upload.");
-      return;
-    }
-
-    setUploading(true);
+  const updateStatus = async (allocationId: string, newStatus: string) => {
     try {
-      await uploadFile(fileToUpload, clientPAN, assessmentYear, targetFolder);
-
-      const response = await fetch("/api/staff/update-status", {
+      await fetch("/api/staff/update-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          allocationId,
-          newStatus,
-          clientPAN,
-          assessmentYear,
-          folder: targetFolder,
-          fileName: fileToUpload.name, // Pass filename for potential server-side logging
-          comments, // Include comments for rejection
-        }),
+        body: JSON.stringify({ allocationId, newStatus }),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to update status");
-      }
-
-      setFileToUpload(null);
-      await fetchStaffAllocations(); // Refresh allocations
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
+      fetchAllocations(); // Refresh matrix
+    } catch (err) {
+      console.error("Failed to update status");
     }
   };
 
-  const allocationsByStatus = {
-    actionRequired: allocations.filter((a) => a.status === "Allocated" || a.status === "Rejected"),
-    pendingItrUpload: allocations.filter((a) => a.status === "Ready to upload"),
-    pendingVerification: allocations.filter((a) => a.status === "Filed"),
-    completed: allocations.filter((a) => a.status === "Verified"),
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/admin/login");
   };
 
-  if (loading) return <div className="text-center py-8">Loading dashboard...</div>;
-  if (error) return <div className="text-center py-8 text-red-500">Error: {error}</div>;
+  if (loading) return <div className="text-center py-12 text-slate-500">Loading Auditor Dashboard...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-8 text-center">Staff Dashboard</h1>
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+      <header className="mb-8 flex flex-col md:flex-row items-center justify-between border-b pb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Auditor Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">Manage your assigned client portfolio and document requests.</p>
+        </div>
+        <button 
+          onClick={handleLogout}
+          className="mt-4 md:mt-0 bg-slate-200 hover:bg-slate-300 text-slate-800 text-sm font-bold py-2 px-6 rounded-lg transition-colors"
+        >
+          Sign Out
+        </button>
+      </header>
 
-      {/* Section 1: Action Required / Rejections */}
-      <div className="mb-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4">Action Required / Rejections</h2>
-        {allocationsByStatus.actionRequired.length === 0 ? (
-          <p className="text-gray-600">No action required at this time.</p>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden max-w-6xl mx-auto">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+          <h3 className="font-bold text-slate-900 text-sm">Active Assignments</h3>
+        </div>
+        
+        {allocations.length === 0 ? (
+          <p className="text-center py-12 text-slate-400 text-sm">No clients currently assigned to your ID.</p>
         ) : (
-          allocationsByStatus.actionRequired.map((allocation) => (
-            <div key={allocation.id} className="border p-4 rounded-lg mb-4">
-              <p>Client PAN: {allocation.clientPAN}</p>
-              <p>Assessment Year: {allocation.assessmentYear}</p>
-              <p>Status: {allocation.status}</p>
-              {allocation.comments && <p className="text-red-500">Admin Comments: {allocation.comments}</p>}
-              <input type="file" onChange={(e) => setFileToUpload(e.target.files ? e.target.files[0] : null)} className="mt-2" />
-              <button
-                onClick={() => handleFileUploadAndStatusUpdate(allocation.id, allocation.clientPAN, allocation.assessmentYear, allocation.status, 1, "COI Ready")}
-                className="ml-2 bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
-                disabled={uploading}
-              >
-                {uploading ? "Uploading..." : "Upload Raw Data & Mark COI Ready"}
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Section 2: Pending ITR Upload */}
-      <div className="mb-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4">Pending ITR Upload</h2>
-        {allocationsByStatus.pendingItrUpload.length === 0 ? (
-          <p className="text-gray-600">No ITR uploads pending.</p>
-        ) : (
-          allocationsByStatus.pendingItrUpload.map((allocation) => (
-            <div key={allocation.id} className="border p-4 rounded-lg mb-4">
-              <p>Client PAN: {allocation.clientPAN}</p>
-              <p>Assessment Year: {allocation.assessmentYear}</p>
-              <p>Status: {allocation.status}</p>
-              <input type="file" onChange={(e) => setFileToUpload(e.target.files ? e.target.files[0] : null)} className="mt-2" />
-              <button
-                onClick={() => handleFileUploadAndStatusUpdate(allocation.id, allocation.clientPAN, allocation.assessmentYear, allocation.status, 3, "Filed")}
-                className="ml-2 bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
-                disabled={uploading}
-              >
-                {uploading ? "Uploading..." : "Upload ITR & Mark Filed"}
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Section 3: Pending Verification */}
-      <div className="mb-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4">Pending Verification</h2>
-        {allocationsByStatus.pendingVerification.length === 0 ? (
-          <p className="text-gray-600">No verifications pending.</p>
-        ) : (
-          allocationsByStatus.pendingVerification.map((allocation) => (
-            <div key={allocation.id} className="border p-4 rounded-lg mb-4">
-              <p>Client PAN: {allocation.clientPAN}</p>
-              <p>Assessment Year: {allocation.assessmentYear}</p>
-              <p>Status: {allocation.status}</p>
-              <input type="file" onChange={(e) => setFileToUpload(e.target.files ? e.target.files[0] : null)} className="mt-2" />
-              <button
-                onClick={() => handleFileUploadAndStatusUpdate(allocation.id, allocation.clientPAN, allocation.assessmentYear, allocation.status, 4, "Verified")}
-                className="ml-2 bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
-                disabled={uploading}
-              >
-                {uploading ? "Uploading..." : "Upload Verification & Mark Verified"}
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Section 4: Completed View */}
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-4">Completed Allocations</h2>
-        {allocationsByStatus.completed.length === 0 ? (
-          <p className="text-gray-600">No completed allocations yet.</p>
-        ) : (
-          allocationsByStatus.completed.map((allocation) => (
-            <div key={allocation.id} className="border p-4 rounded-lg mb-4 bg-gray-50">
-              <p>Client PAN: {allocation.clientPAN}</p>
-              <p>Assessment Year: {allocation.assessmentYear}</p>
-              <p>Status: {allocation.status}</p>
-              <p>Billing Status: {allocation.billingStatus}</p>
-            </div>
-          ))
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-left">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500">Client Name</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500">PAN</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500">Year</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500">Status</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white text-sm">
+                {allocations.map((allocation) => (
+                  <tr key={allocation.id} className="hover:bg-slate-50">
+                    <td className="py-3 px-4 font-semibold text-slate-800">{allocation.client?.name || "Unknown"}</td>
+                    <td className="py-3 px-4 font-mono text-slate-600">{allocation.clientPAN}</td>
+                    <td className="py-3 px-4 text-slate-600">{allocation.assessmentYear}</td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {allocation.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {allocation.status === "Allocated" && (
+                        <button 
+                          onClick={() => updateStatus(allocation.id, "COI_Ready")}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-xs transition-colors"
+                        >
+                          Request Documents
+                        </button>
+                      )}
+                      {allocation.status === "COI_Ready" && (
+                        <p className="text-xs text-amber-600 font-medium">Waiting on Client...</p>
+                      )}
+                      {/* Document upload dropzone will go here in the next step! */}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
