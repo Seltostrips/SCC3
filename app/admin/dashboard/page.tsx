@@ -40,6 +40,9 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("");
   
+  // Document Viewer State
+  const [expandedDocs, setExpandedDocs] = useState<Record<string, any[]>>({});
+
   // Directory States
   const [usersList, setUsersList] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -124,6 +127,48 @@ export default function AdminDashboard() {
     const comments = prompt("Provide diagnostic context / rejection reason:");
     if (comments) {
       await handleStatusUpdate(allocationId, "Rejected", comments);
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (!confirm("This will trigger a sequential browser download for ALL files associated with the currently filtered allocations. Are you sure?")) return;
+    setAdminMessage("Executing bulk download... Please ensure your browser allows multiple file downloads!");
+    
+    for (const alloc of filteredAllocations) {
+      try {
+        const res = await fetch(`/api/admin/allocation-files?id=${alloc.id}`);
+        const data = await res.json();
+        if (data.files && data.files.length > 0) {
+          data.files.forEach((f: any) => {
+            const a = document.createElement('a');
+            a.href = f.url;
+            a.download = f.name;
+            a.target = "_blank";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          });
+        }
+      } catch (err) {
+        console.error("Bulk download error for allocation", alloc.id);
+      }
+    }
+  };
+
+  const handleViewFiles = async (allocationId: string) => {
+    if (expandedDocs[allocationId]) {
+      // Toggle off if already open
+      const newDocs = { ...expandedDocs };
+      delete newDocs[allocationId];
+      setExpandedDocs(newDocs);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/allocation-files?id=${allocationId}`);
+      const data = await res.json();
+      setExpandedDocs({ ...expandedDocs, [allocationId]: data.files || [] });
+    } catch (err) {
+      console.error("Failed to fetch files");
     }
   };
 
@@ -331,12 +376,17 @@ export default function AdminDashboard() {
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h3 className="font-bold text-slate-900 text-sm">Tracking State Monitor</h3>
-              <select className="bg-white border text-xs rounded-lg py-1 px-2 text-slate-700" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
-                <option value="">Full Compilation Matrix</option>
-                {ALL_ASSESSMENT_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
-              </select>
+              <div className="flex items-center space-x-4">
+                <button onClick={handleBulkDownload} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition-colors">
+                  📥 Bulk Download All Docs
+                </button>
+                <select className="bg-white border text-xs rounded-lg py-1 px-2 text-slate-700" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
+                  <option value="">Full Compilation Matrix</option>
+                  {ALL_ASSESSMENT_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </div>
             </div>
             {filteredAllocations.length === 0 ? <p className="text-center py-12 text-slate-400 text-sm">No metrics match current filter.</p> : (
               <div className="overflow-x-auto">
@@ -347,26 +397,49 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">Client PAN</th>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">Assigned Auditor</th>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">State Code</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Hooks</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">System Pipeline Hooks</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white text-sm">
                     {filteredAllocations.map((allocation, index) => (
-                      <tr key={allocation.id} className="hover:bg-slate-50">
+                      <tr key={allocation.id} className="hover:bg-slate-50 align-top">
                         <td className="py-3 px-4 text-slate-400 font-medium">{index + 1}</td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-700">{allocation.clientPAN}</td>
                         <td className="py-3 px-4 text-slate-600 font-medium">{allocation.staffID}</td>
                         <td className="py-3 px-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${allocation.status === "Filed" ? "bg-green-100 text-green-800" : allocation.status === "Rejected" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{allocation.status}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${allocation.status === "Filed" ? "bg-green-100 text-green-800" : allocation.status === "Rejected" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`}>{allocation.status}</span>
                         </td>
                         <td className="py-3 px-4">
                           {allocation.status === "COI_Ready" && (
-                            <div className="flex space-x-2">
+                            <div className="flex space-x-2 mb-2">
                               <button onClick={() => handleStatusUpdate(allocation.id, "Ready_to_upload")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1 px-3 rounded-md text-xs">Approve</button>
                               <button onClick={() => handleReject(allocation.id)} className="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-1 px-3 rounded-md text-xs">Reject</button>
                             </div>
                           )}
-                          {allocation.status === "Rejected" && <p className="text-rose-600 text-xs italic">Log: {allocation.comments}</p>}
+                          {allocation.status === "Rejected" && <p className="text-rose-600 text-xs italic mb-2">Log: {allocation.comments}</p>}
+                          
+                          {/* Document Viewer Expander */}
+                          <button onClick={() => handleViewFiles(allocation.id)} className="text-blue-600 hover:underline text-xs font-bold flex items-center mt-1">
+                            {expandedDocs[allocation.id] ? "▼ Hide Documents" : "▶ Review Documents"}
+                          </button>
+                          
+                          {expandedDocs[allocation.id] && (
+                            <div className="mt-2 p-2 bg-slate-100 rounded border border-slate-200 text-xs w-max min-w-[250px]">
+                              {expandedDocs[allocation.id].length === 0 ? <span className="text-slate-500 italic">No files uploaded yet.</span> : 
+                                expandedDocs[allocation.id].map((file: any, i: number) => (
+                                  <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0 gap-4">
+                                    <span className="truncate max-w-[200px] font-mono text-slate-700" title={file.name}>
+                                      <span className="text-slate-400 mr-1">[{file.folder}]</span>
+                                      {file.name}
+                                    </span>
+                                    <a href={file.url} download target="_blank" className="text-blue-600 hover:text-blue-800 font-bold whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded">
+                                      Download
+                                    </a>
+                                  </div>
+                                ))
+                              }
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
