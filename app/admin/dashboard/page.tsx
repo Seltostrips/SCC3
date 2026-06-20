@@ -12,6 +12,13 @@ interface Allocation {
   comments?: string;
 }
 
+interface User {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+}
+
 const ALL_ASSESSMENT_YEARS = [
   "2026-27",
   "2025-26",
@@ -20,7 +27,7 @@ const ALL_ASSESSMENT_YEARS = [
   "2022-23",
 ];
 
-type TabType = "allocations" | "onboarding" | "settings";
+type TabType = "allocations" | "onboarding" | "directory" | "settings";
 
 export default function AdminDashboard() {
   // Navigation Tabs
@@ -33,18 +40,21 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("");
   
+  // Directory States
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
   // Administrative States
   const [newPassword, setNewPassword] = useState("");
   const [newAdminUsername, setNewAdminUsername] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
 
-  // File Upload Handling (Allocations)
+  // File Upload Handling
   const [allocationFile, setAllocationFile] = useState<File | null>(null);
   const [uploadingAllocations, setUploadingAllocations] = useState(false);
   const [allocationMessage, setAllocationMessage] = useState<string | null>(null);
 
-  // File Upload Handling (Staff/Clients User Profiles)
   const [userFile, setUserFile] = useState<File | null>(null);
   const [uploadingUsers, setUploadingUsers] = useState(false);
   const [userMessage, setUserMessage] = useState<string | null>(null);
@@ -52,6 +62,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchAllocations();
   }, []);
+
+  // Fetch users automatically when the directory tab is clicked for the first time
+  useEffect(() => {
+    if (activeTab === "directory" && usersList.length === 0) {
+      fetchUsers();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (selectedYear) {
@@ -72,6 +89,20 @@ export default function AdminDashboard() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const response = await fetch("/api/admin/users");
+      if (!response.ok) throw new Error("Failed to fetch users.");
+      const data: User[] = await response.json();
+      setUsersList(data);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoadingUsers(false);
     }
   };
 
@@ -97,7 +128,6 @@ export default function AdminDashboard() {
   };
 
   const downloadAllocationTemplate = () => {
-    // Semicolon delimited to match the new format
     const headers = "PAN;Client Name;StaffID;AssessmentYear\n";
     const sample = "BYMPP7794N;Client Sharma;Staff_1;2026-27\n"; 
     const blob = new Blob([headers + sample], { type: "text/csv" });
@@ -109,7 +139,6 @@ export default function AdminDashboard() {
   };
 
   const downloadUserTemplate = () => {
-    // Semicolon delimited with exact column headers
     const headers = "role;username;password;name;pan;email;phone\n";
     const sampleStaff = "staff;Staff_1;Staff_1@123;Staff Verma;;staff@gmail.com;9999999999\n";
     const sampleClient = "client;Client_1;Client_1@123;Client Sharma;BYMPP7794N;client@gmail.com;112233445\n";
@@ -120,6 +149,7 @@ export default function AdminDashboard() {
     a.download = "user_onboarding_template.csv";
     a.click();
   };
+
   const handleAllocationUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocationFile) {
@@ -169,8 +199,10 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
-        setUserMessage(`Ingestion successful: ${data.count || 0} entities synchronized.`);
+        setUserMessage(`Ingestion successful. Users synchronized.`);
         setUserFile(null);
+        // Automatically refresh directory if we are on that tab
+        fetchUsers(); 
       } else {
         setUserMessage(data.error || "Profile validation mapping exception.");
       }
@@ -214,6 +246,7 @@ export default function AdminDashboard() {
         setAdminMessage("Secondary administrator profile initialized.");
         setNewAdminUsername("");
         setNewAdminPassword("");
+        fetchUsers(); // Refresh the directory automatically
       } else {
         setAdminMessage("Profile setup execution error.");
       }
@@ -234,7 +267,6 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* State Tracking Notification Banner */}
       {adminMessage && (
         <div className="mb-6 p-4 rounded-xl border bg-blue-50 border-blue-200 text-blue-800 text-sm font-medium">
           {adminMessage}
@@ -242,147 +274,99 @@ export default function AdminDashboard() {
       )}
 
       {/* Navigation Tab Bar */}
-      <div className="flex border-b border-slate-200 mb-8 space-x-2">
+      <div className="flex border-b border-slate-200 mb-8 space-x-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("allocations")}
-          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all ${
-            activeTab === "allocations"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "allocations" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
           }`}
         >
           Allocation Matrix
         </button>
         <button
           onClick={() => setActiveTab("onboarding")}
-          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all ${
-            activeTab === "onboarding"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "onboarding" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
           }`}
         >
           User Onboarding Pipeline
         </button>
         <button
-          onClick={() => setActiveTab("settings")}
-          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all ${
-            activeTab === "settings"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          onClick={() => setActiveTab("directory")}
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "directory" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
           }`}
         >
-          Access Controls & Security
+          System Directory
+        </button>
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "settings" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          }`}
+        >
+          Access Controls
         </button>
       </div>
 
-      {/* TAB 1: ALLOCATION TRACKER MATRIX */}
+      {/* TAB 1: ALLOCATIONS */}
       {activeTab === "allocations" && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Ingest Allocation Structure</h2>
-                <p className="text-xs text-slate-400">Map processing records inside the master matrix ledger.</p>
               </div>
-              <button
-                onClick={downloadAllocationTemplate}
-                className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold self-start sm:self-center"
-              >
-                Get Allocation CSV Schema Layout
+              <button onClick={downloadAllocationTemplate} className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold">
+                Get Allocation CSV Schema
               </button>
             </div>
             <form onSubmit={handleAllocationUpload} className="flex flex-col sm:flex-row items-center gap-4">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => setAllocationFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-              />
-              <button
-                type="submit"
-                disabled={!allocationFile || uploadingAllocations}
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg transition-all whitespace-nowrap"
-              >
-                {uploadingAllocations ? "Parsing System File..." : "Execute Mass Upload"}
+              <input type="file" accept=".csv" onChange={(e) => setAllocationFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+              <button type="submit" disabled={!allocationFile || uploadingAllocations} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg whitespace-nowrap">
+                {uploadingAllocations ? "Parsing..." : "Execute Mass Upload"}
               </button>
             </form>
-            {allocationMessage && (
-              <p className={`mt-3 text-xs font-medium ${allocationMessage.includes("successful") ? "text-green-600" : "text-red-600"}`}>
-                {allocationMessage}
-              </p>
-            )}
+            {allocationMessage && <p className={`mt-3 text-xs font-medium ${allocationMessage.includes("successful") ? "text-green-600" : "text-red-600"}`}>{allocationMessage}</p>}
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between">
               <h3 className="font-bold text-slate-900 text-sm">Tracking State Monitor</h3>
-              <div className="flex items-center space-x-2">
-                <label htmlFor="yearFilter" className="text-xs text-slate-500 font-medium whitespace-nowrap">Scope Ledger Block:</label>
-                <select
-                  id="yearFilter"
-                  className="bg-white border text-xs rounded-lg py-1 px-2 text-slate-700 font-medium focus:outline-none"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                >
-                  <option value="">Full Compilation Matrix</option>
-                  {ALL_ASSESSMENT_YEARS.map((year) => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-              </div>
+              <select className="bg-white border text-xs rounded-lg py-1 px-2 text-slate-700" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
+                <option value="">Full Compilation Matrix</option>
+                {ALL_ASSESSMENT_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
             </div>
-
-            {filteredAllocations.length === 0 ? (
-              <p className="text-center py-12 text-slate-400 text-sm">Zero metrics match current filter configuration scope.</p>
-            ) : (
+            {filteredAllocations.length === 0 ? <p className="text-center py-12 text-slate-400 text-sm">No metrics match current filter.</p> : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-200 text-left">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Idx</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Client PAN</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Assigned Auditor</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">State Code</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">System Pipeline Hooks</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Idx</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Client PAN</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Assigned Auditor</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">State Code</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Hooks</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white text-sm">
                     {filteredAllocations.map((allocation, index) => (
-                      <tr key={allocation.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={allocation.id} className="hover:bg-slate-50">
                         <td className="py-3 px-4 text-slate-400 font-medium">{index + 1}</td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-700">{allocation.clientPAN}</td>
                         <td className="py-3 px-4 text-slate-600 font-medium">{allocation.staffID}</td>
                         <td className="py-3 px-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            allocation.status === "Filed" ? "bg-green-100 text-green-800" :
-                            allocation.status === "Rejected" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
-                          }`}>
-                            {allocation.status}
-                          </span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${allocation.status === "Filed" ? "bg-green-100 text-green-800" : allocation.status === "Rejected" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{allocation.status}</span>
                         </td>
                         <td className="py-3 px-4">
                           {allocation.status === "COI_Ready" && (
                             <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleStatusUpdate(allocation.id, "Ready_to_upload")}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors"
-                              >
-                                Route Verification
-                              </button>
-                              <button
-                                onClick={() => handleReject(allocation.id)}
-                                className="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-1 px-3 rounded-md text-xs transition-colors"
-                              >
-                                Trigger Reject
-                              </button>
+                              <button onClick={() => handleStatusUpdate(allocation.id, "Ready_to_upload")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1 px-3 rounded-md text-xs">Approve</button>
+                              <button onClick={() => handleReject(allocation.id)} className="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-1 px-3 rounded-md text-xs">Reject</button>
                             </div>
                           )}
-                          {allocation.status === "Rejected" && (
-                            <p className="text-rose-600 text-xs italic max-w-xs truncate">Log: {allocation.comments}</p>
-                          )}
-                          {allocation.status === "Filed" && (
-                            <p className="text-slate-400 text-xs">Immutable Record State Set.</p>
-                          )}
+                          {allocation.status === "Rejected" && <p className="text-rose-600 text-xs italic">Log: {allocation.comments}</p>}
                         </td>
                       </tr>
                     ))}
@@ -394,108 +378,110 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 2: STAFF & CLIENTS USER PROFILE ONBOARDING */}
+      {/* TAB 2: ONBOARDING */}
       {activeTab === "onboarding" && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-4xl">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 border-b pb-4">
+          <div className="flex justify-between gap-4 mb-6 border-b pb-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900">Onboard Users Pool</h2>
-              <p className="text-xs text-slate-400 mt-1">Batch construct staff auditor profiles and corporate operational scopes.</p>
+            </div>
+            <button onClick={downloadUserTemplate} className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold">Get User Layout Sheet</button>
+          </div>
+          <form onSubmit={handleUserUpload} className="space-y-4">
+            <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex justify-center py-8">
+              <input type="file" accept=".csv" onChange={(e) => setUserFile(e.target.files?.[0] || null)} className="block text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+            </div>
+            <button type="submit" disabled={!userFile || uploadingUsers} className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg">
+              {uploadingUsers ? "Syncing..." : "Commit Batch Onboarding"}
+            </button>
+          </form>
+          {userMessage && <div className={`mt-4 p-3 rounded-lg text-xs font-medium ${userMessage.includes("Ingestion successful") ? "bg-green-50 text-green-800 border border-green-200" : "bg-rose-50 text-rose-800 border border-rose-200"}`}>{userMessage}</div>}
+        </div>
+      )}
+
+      {/* TAB 3: SYSTEM DIRECTORY */}
+      {activeTab === "directory" && (
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 border-b pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">System Directory</h2>
+              <p className="text-xs text-slate-400 mt-1">View all provisioned Staff, Client, and Admin accounts.</p>
             </div>
             <button
-              onClick={downloadUserTemplate}
-              className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold self-start sm:self-center"
+              onClick={fetchUsers}
+              disabled={loadingUsers}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm py-2 px-4 rounded-lg transition-all flex items-center gap-2"
             >
-              Get User Upload Layout Sheet
+              {loadingUsers ? "Refreshing..." : "↻ Refresh Database"}
             </button>
           </div>
 
-          <form onSubmit={handleUserUpload} className="space-y-4">
-            <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center py-8">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => setUserFile(e.target.files?.[0] || null)}
-                className="block text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-              />
-              <p className="text-[11px] text-slate-400 mt-2">Processes both Roles: "staff" and "client" natively.</p>
-            </div>
-            
-            <button
-              type="submit"
-              disabled={!userFile || uploadingUsers}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg transition-all"
-            >
-              {uploadingUsers ? "Syncing Identity Clusters..." : "Commit Batch Onboarding"}
-            </button>
-          </form>
-
-          {userMessage && (
-            <div className={`mt-4 p-3 rounded-lg text-xs font-medium ${userMessage.includes("Ingestion successful") ? "bg-green-50 text-green-800 border border-green-200" : "bg-rose-50 text-rose-800 border border-rose-200"}`}>
-              {userMessage}
+          {loadingUsers && usersList.length === 0 ? (
+            <p className="text-center py-8 text-slate-400 text-sm">Loading user database...</p>
+          ) : usersList.length === 0 ? (
+            <p className="text-center py-8 text-slate-400 text-sm">No users found in the system. Upload some via the Onboarding Pipeline.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Role Matrix</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Username / ID</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Full Name</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 tracking-wider">Internal System ID</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white text-sm">
+                  {usersList.map((user) => (
+                    <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold tracking-wide ${
+                          user.role === "ADMIN" ? "bg-purple-100 text-purple-800" :
+                          user.role === "STAFF" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-semibold text-slate-700">{user.username}</td>
+                      <td className="py-3 px-4 text-slate-600 font-medium">{user.name}</td>
+                      <td className="py-3 px-4 text-xs text-slate-400 font-mono truncate max-w-[120px]">{user.id}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 3: SECURITY CONTROLS & AUTHENTICATION MUTATION */}
+      {/* TAB 4: SETTINGS */}
       {activeTab === "settings" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl">
-          {/* Box A: Root Administrative Mutation Hooks */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-lg font-bold text-slate-900 mb-1">Reset Account Master Password</h3>
-              <p className="text-xs text-slate-400 mb-4">Mutates current session hashing mechanisms securely.</p>
-              <form onSubmit={handleResetPassword} className="space-y-3">
+              <form onSubmit={handleResetPassword} className="space-y-3 mt-4">
                 <div>
-                  <label htmlFor="pass" className="block text-slate-500 text-xs font-bold mb-1">Set Password Target</label>
-                  <input
-                    type="password"
-                    id="pass"
-                    className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white transition-colors"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
+                  <label className="block text-slate-500 text-xs font-bold mb-1">Set Password Target</label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white" />
                 </div>
-                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors">
-                  Authorize Credential Reset
-                </button>
+                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-2 px-4 rounded-lg">Authorize Reset</button>
               </form>
             </div>
           </div>
-
-          {/* Box B: Auxiliary Account Allocation */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-lg font-bold text-slate-900 mb-1">Initialize Secondary Admin</h3>
-              <p className="text-xs text-slate-400 mb-4">Provision localized access keys for auxiliary operational units.</p>
-              <form onSubmit={handleCreateAdmin} className="space-y-3">
+              <form onSubmit={handleCreateAdmin} className="space-y-3 mt-4">
                 <div>
-                  <label htmlFor="auxUser" className="block text-slate-500 text-xs font-bold mb-1">Username Identifier</label>
-                  <input
-                    type="text"
-                    id="auxUser"
-                    className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white transition-colors"
-                    value={newAdminUsername}
-                    onChange={(e) => setNewAdminUsername(e.target.value)}
-                    required
-                  />
+                  <label className="block text-slate-500 text-xs font-bold mb-1">Username Identifier</label>
+                  <input type="text" value={newAdminUsername} onChange={(e) => setNewAdminUsername(e.target.value)} required className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white" />
                 </div>
                 <div>
-                  <label htmlFor="auxPass" className="block text-slate-500 text-xs font-bold mb-1">Target Account Key Phrase</label>
-                  <input
-                    type="password"
-                    id="auxPass"
-                    className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white transition-colors"
-                    value={newAdminPassword}
-                    onChange={(e) => setNewAdminPassword(e.target.value)}
-                    required
-                  />
+                  <label className="block text-slate-500 text-xs font-bold mb-1">Target Account Key Phrase</label>
+                  <input type="password" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} required className="w-full bg-slate-50 border rounded-lg py-2 px-3 text-sm focus:outline-none focus:bg-white" />
                 </div>
-                <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors">
-                  Provision Administrative Account
-                </button>
+                <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-4 rounded-lg">Provision Account</button>
               </form>
             </div>
           </div>
