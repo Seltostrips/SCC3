@@ -97,8 +97,9 @@ export default function AdminDashboard() {
   };
 
   const downloadAllocationTemplate = () => {
-    const headers = "PAN,StaffID,AssessmentYear\n";
-    const sample = "ABCDE1234F,staff_username,2026-27\n"; 
+    // Semicolon delimited to match the new format
+    const headers = "PAN;Client Name;StaffID;AssessmentYear\n";
+    const sample = "BYMPP7794N;Client Sharma;Staff_1;2026-27\n"; 
     const blob = new Blob([headers + sample], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -108,9 +109,10 @@ export default function AdminDashboard() {
   };
 
   const downloadUserTemplate = () => {
-    const headers = "role,username,password,name,pan,email,phone\n";
-    const sampleStaff = "staff,tax_expert_1,securePass123,Rahul Sharma,,,rahul@firm.com,9876543210\n";
-    const sampleClient = "client,client_abc,,,Alpha Corp,ABCDE1234F,contact@alpha.com,\n";
+    // Semicolon delimited with exact column headers
+    const headers = "role;username;password;name;pan;email;phone\n";
+    const sampleStaff = "staff;Staff_1;Staff_1@123;Staff Verma;;staff@gmail.com;9999999999\n";
+    const sampleClient = "client;Client_1;Client_1@123;Client Sharma;BYMPP7794N;client@gmail.com;112233445\n";
     const blob = new Blob([headers + sampleStaff + sampleClient], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -118,7 +120,6 @@ export default function AdminDashboard() {
     a.download = "user_onboarding_template.csv";
     a.click();
   };
-
   const handleAllocationUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocationFile) {
