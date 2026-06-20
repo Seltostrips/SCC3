@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, AllocationStatus } from "@prisma/client";
 import { parse } from "csv-parse/sync";
-
 const prisma = new PrismaClient();
-
 const ALLOWED_ASSESSMENT_YEARS = [
   "2026-27",
   "2025-26",
@@ -39,7 +37,7 @@ export async function POST(request: Request) {
         clientPAN: record.PAN,
         staffID: record.StaffID,
         assessmentYear: record.AssessmentYear,
-        status: "Unallocated", // Default status
+        status: AllocationStatus.Unallocated, // Default status
         billingStatus: "Pending", // Default billing status
       });
     }
