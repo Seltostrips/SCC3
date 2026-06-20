@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CLIENT
+}
+
+enum AllocationStatus {
+  Unallocated
+  Allocated
+  COI_Ready
+  Ready_to_upload
+  Rejected
+  Filed
+  Verified
+}
+
+model User {
+  id        String   @id @default(uuid())
+  role      Role
+  username  String   @unique
+  name      String
+  password  String
+  clients   Allocation[] @relation("ClientAllocations")
+  staff     Allocation[] @relation("StaffAllocations")
+
+  @@map("users")
+}
+
+model Allocation {
+  id              String         @id @default(uuid())
+  clientPAN       String
+  staffID         String
+  assessmentYear  String
+  status          AllocationStatus @default(Unallocated)
+  billingStatus   String         @default("Pending")
+  comments        String?        @db.Text
+
+  client          User           @relation("ClientAllocations", fields: [clientPAN], references: [username])
+  staff           User           @relation("StaffAllocations", fields: [staffID], references: [username])
+
+  @@unique([clientPAN, assessmentYear])
+  @@map("allocations")
+}
