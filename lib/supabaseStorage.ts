@@ -19,10 +19,13 @@ export async function getPublicUrl(pan: string, assessmentYear: string, folder: 
 
 // NEW: Allows Admin to scan all folders for a specific allocation
 export async function listFiles(pan: string, assessmentYear: string) {
-  const allFiles = [];
+  // FIX: Added strict TypeScript typing for the objects going into this array
+  const allFiles: { folder: number; name: string; url: string }[] = [];
+  
   for (let i = 1; i <= 4; i++) {
     const path = `${pan}/${assessmentYear}/folder-${i}`;
     const { data, error } = await supabase.storage.from(BUCKET_NAME).list(path);
+    
     if (data && data.length > 0) {
       data.forEach(f => {
         if (f.name !== '.emptyFolderPlaceholder') {
@@ -31,7 +34,6 @@ export async function listFiles(pan: string, assessmentYear: string) {
           allFiles.push({
             folder: i,
             name: f.name,
-            // Appending ?download= forces the browser to save the file rather than open it in a new tab
             url: `${urlData.publicUrl}?download=`
           });
         }
