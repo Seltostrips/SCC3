@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// import { getAdminInfo } from "@/lib/auth"; // Assuming an auth utility
 
 interface Allocation {
   id: string;
@@ -27,10 +26,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("");
+  
   const [newPassword, setNewPassword] = useState("");
   const [newAdminUsername, setNewAdminUsername] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
+
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -50,8 +51,6 @@ export default function AdminDashboard() {
   const fetchAllocations = async () => {
     try {
       setLoading(true);
-      // In a real app, this would be an authenticated API call
-      // For now, we\'ll simulate an API call
       const response = await fetch("/api/admin/allocations");
       if (!response.ok) {
         throw new Error("Failed to fetch allocations");
@@ -65,9 +64,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const handleStatusUpdate = async (allocationId: string, newStatus: string, comments?: string) => {
     try {
       const response = await fetch("/api/admin/update-allocation", {
@@ -80,7 +76,7 @@ export default function AdminDashboard() {
         throw new Error("Failed to update allocation status");
       }
 
-      await fetchAllocations(); // Refresh allocations
+      await fetchAllocations();
     } catch (err: any) {
       setError(err.message);
     }
@@ -93,24 +89,66 @@ export default function AdminDashboard() {
     }
   };
 
+  const downloadTemplate = () => {
+    const headers = "PAN,StaffID,AssessmentYear\n";
+    const sample = "ABCDE1234F,staff_username,2026-27\n"; 
+    const blob = new Blob([headers + sample], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "allocation_template.csv";
+    a.click();
+  };
+
+  const handleFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      setUploadMessage("Please select a file first.");
+      return;
+    }
+    setUploading(true);
+    setUploadMessage("Uploading...");
+    const formData = new FormData();
+    formData.append("csvFile", uploadFile);
+
+    try {
+      const res = await fetch("/api/admin/upload-allocations", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUploadMessage("Upload successful!");
+        setUploadFile(null);
+        fetchAllocations();
+      } else {
+        setUploadMessage(data.message || "Upload failed");
+      }
+    } catch (err) {
+      setUploadMessage("An error occurred during upload.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminMessage("Processing password reset...");
     try {
-      const res = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newPassword }),
       });
       const data = await res.json();
       if (res.ok) {
-        setAdminMessage('Password updated successfully!');
-        setNewPassword('');
+        setAdminMessage("Password updated successfully!");
+        setNewPassword("");
       } else {
-        setAdminMessage(data.error || 'Failed to update password');
+        setAdminMessage(data.error || "Failed to update password");
       }
     } catch (err) {
-      setAdminMessage('An error occurred.');
+      setAdminMessage("An error occurred.");
     }
   };
 
@@ -118,21 +156,21 @@ export default function AdminDashboard() {
     e.preventDefault();
     setAdminMessage("Creating new admin...");
     try {
-      const res = await fetch('/api/admin/create-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/create-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: newAdminUsername, password: newAdminPassword }),
       });
       const data = await res.json();
       if (res.ok) {
-        setAdminMessage('Admin created successfully!');
-        setNewAdminUsername('');
-        setNewAdminPassword('');
+        setAdminMessage("Admin created successfully!");
+        setNewAdminUsername("");
+        setNewAdminPassword("");
       } else {
-        setAdminMessage(data.error || 'Failed to create admin');
+        setAdminMessage(data.error || "Failed to create admin");
       }
     } catch (err) {
-      setAdminMessage('An error occurred.');
+      setAdminMessage("An error occurred.");
     }
   };
 
@@ -168,62 +206,8 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {filteredAllocations.length === 0 ? (
-        <p className="text-center text-gray-600">No allocations found.</p>
-      ) : (
-        <div className="overflow-x-auto bg-white p-6 rounded-lg shadow-md">
-          <table className="min-w-full bg-white border border-gray-200">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Sno</th>
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Client Name</th>
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">PAN</th>
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Allocated to Staff</th>
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Status</th>
-                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Comments/Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAllocations.map((allocation, index) => (
-                <tr key={allocation.id} className="hover:bg-gray-50">
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">{index + 1}</td>
-                  {/* You would typically fetch client name based on clientPAN */}
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">Client Name Placeholder</td>
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.clientPAN}</td>
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.staffID}</td>
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.status}</td>
-                  <td className="py-2 px-4 border-b text-sm text-gray-800">
-                    {allocation.status === "COI Ready" && (
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleStatusUpdate(allocation.id, "Ready to upload")}
-                          className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleReject(allocation.id)}
-                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-sm"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
-                    {allocation.status === "Rejected" && (
-                      <p className="text-red-500 text-sm">Rejected: {allocation.comments}</p>
-                    )}
-                    {allocation.status === "Filed" && (
-                      <p className="text-green-600 text-sm">Automatically flagged as complete.</p>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-{/* Upload Allocations Section */}
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md mb-8">
+      {/* Upload Allocations Section */}
+      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-semibold">Upload Allocations CSV</h2>
           <button
@@ -254,8 +238,61 @@ export default function AdminDashboard() {
           </p>
         )}
       </div>
+
+      {filteredAllocations.length === 0 ? (
+        <p className="text-center text-gray-600">No allocations found.</p>
+      ) : (
+        <div className="overflow-x-auto bg-white p-6 rounded-lg shadow-md mb-8">
+          <table className="min-w-full bg-white border border-gray-200">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Sno</th>
+                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Client PAN</th>
+                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Allocated to Staff</th>
+                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Status</th>
+                <th className="py-2 px-4 border-b text-left text-sm font-semibold text-gray-600">Comments/Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAllocations.map((allocation, index) => (
+                <tr key={allocation.id} className="hover:bg-gray-50">
+                  <td className="py-2 px-4 border-b text-sm text-gray-800">{index + 1}</td>
+                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.clientPAN}</td>
+                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.staffID}</td>
+                  <td className="py-2 px-4 border-b text-sm text-gray-800">{allocation.status}</td>
+                  <td className="py-2 px-4 border-b text-sm text-gray-800">
+                    {allocation.status === "COI_Ready" && (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleStatusUpdate(allocation.id, "Ready_to_upload")}
+                          className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(allocation.id)}
+                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-sm"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                    {allocation.status === "Rejected" && (
+                      <p className="text-red-500 text-sm">Rejected: {allocation.comments}</p>
+                    )}
+                    {allocation.status === "Filed" && (
+                      <p className="text-green-600 text-sm">Automatically flagged as complete.</p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Admin Settings Section */}
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
+      <div className="bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-2xl font-semibold mb-4">Admin Settings</h2>
 
         {/* Form A: Reset My Password */}
@@ -301,28 +338,3 @@ export default function AdminDashboard() {
                 required
               />
             </div>
-            <div className="mb-4">
-              <label htmlFor="newAdminPassword" className="block text-gray-700 text-sm font-bold mb-2">
-                New Password
-              </label>
-              <input
-                type="password"
-                id="newAdminPassword"
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                value={newAdminPassword}
-                onChange={(e) => setNewAdminPassword(e.target.value)}
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            >
-              Create Admin
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
