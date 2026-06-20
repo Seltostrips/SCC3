@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { PrismaClient, AllocationStatus } from "@prisma/client";
 import { parse } from "csv-parse/sync";
+
 const prisma = new PrismaClient();
 const ALLOWED_ASSESSMENT_YEARS = [
   "2026-27",
@@ -20,9 +21,11 @@ export async function POST(request: Request) {
     }
 
     const fileContent = await csvFile.text();
+    // Added delimiter: ";" to handle the new template format
     const records: any[] = parse(fileContent, {
       columns: true,
       skip_empty_lines: true,
+      delimiter: ";"
     });
 
     const allocationsToCreate = [];
@@ -34,11 +37,12 @@ export async function POST(request: Request) {
         );
       }
       allocationsToCreate.push({
+        // Matches the exact columns from your template
         clientPAN: record.PAN,
         staffID: record.StaffID,
         assessmentYear: record.AssessmentYear,
-        status: AllocationStatus.Unallocated, // Default status
-        billingStatus: "Pending", // Default billing status
+        status: AllocationStatus.Unallocated,
+        billingStatus: "Pending", 
       });
     }
 
