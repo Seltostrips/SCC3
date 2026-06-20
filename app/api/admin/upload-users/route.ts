@@ -15,18 +15,21 @@ export async function POST(request: Request) {
     }
 
     const fileContent = await csvFile.text();
+    // Added delimiter: ";" to handle the new template format
     const records: any[] = parse(fileContent, { 
       columns: true, 
-      skip_empty_lines: true 
+      skip_empty_lines: true,
+      delimiter: ";" 
     });
 
     const usersToCreate = [];
     for (const record of records) {
-      const hashedPassword = await bcrypt.hash(record.Password, 10);
+      // Adjusted to match the exact lowercase headers from the new template
+      const hashedPassword = await bcrypt.hash(record.password, 10);
       usersToCreate.push({
-        username: record.PAN || record.StaffID || "admin", // Assuming PAN for Clients, StaffID for Staff, 'admin' for Admin
-        name: record.ClientName || record.StaffName || "Admin User",
-        role: record.Role.toUpperCase(), // 'ADMIN', 'STAFF', 'CLIENT'
+        username: record.username, 
+        name: record.name || "Unknown User",
+        role: record.role.toUpperCase(), // Ensures 'staff' becomes 'STAFF'
         password: hashedPassword,
       });
     }
