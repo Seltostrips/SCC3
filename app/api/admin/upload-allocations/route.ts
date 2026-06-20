@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         clientPAN: record.PAN,
         staffID: record.StaffID,
         assessmentYear: record.AssessmentYear,
-        status: AllocationStatus.Unallocated,
+        status: AllocationStatus.Allocated,
         billingStatus: "Pending", 
       });
     }
