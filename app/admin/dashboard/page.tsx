@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import JSZip from "jszip";
 
 interface Allocation {
   id: string;
@@ -32,7 +33,7 @@ const ALL_ASSESSMENT_YEARS = [
 type TabType = "monitor" | "allocations" | "onboarding" | "directory" | "settings";
 
 export default function AdminDashboard() {
-  // Navigation Tabs (Monitor is now default)
+  // Navigation Tabs
   const [activeTab, setActiveTab] = useState<TabType>("monitor");
 
   // Core Data States
@@ -187,28 +188,75 @@ export default function AdminDashboard() {
     }
   };
 
+  // RE-ENGINEERED: ZIP FOLDER DOWNLOADER
   const handleBulkDownload = async () => {
-    if (!confirm("This will trigger a sequential browser download for ALL files associated with the currently filtered allocations. Are you sure?")) return;
-    setAdminMessage("Executing bulk download... Please ensure your browser allows multiple file downloads!");
+    if (!confirm("This will compile and download a single ZIP file preserving the exact folder structure (PAN -> Folder 1/2/3/4) for all currently filtered allocations. This might take a minute. Are you sure?")) return;
     
-    for (const alloc of filteredAllocations) {
-      try {
-        const res = await fetch(`/api/admin/allocation-files?id=${alloc.id}`);
-        const data = await res.json();
-        if (data.files && data.files.length > 0) {
-          data.files.forEach((f: any) => {
-            const a = document.createElement('a');
-            a.href = f.url;
-            a.download = f.name;
-            a.target = "_blank";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-          });
+    setAdminMessage("Fetching files and compiling ZIP archive... Please leave this tab open.");
+    
+    try {
+      const zip = new JSZip();
+      let hasFiles = false;
+
+      // Loop through all currently filtered allocations
+      for (const alloc of filteredAllocations) {
+        try {
+          const res = await fetch(`/api/admin/allocation-files?id=${alloc.id}`);
+          const data = await res.json();
+          
+          if (data.files && data.files.length > 0) {
+            hasFiles = true;
+            
+            // Create the Master Folder for this specific Client's PAN
+            const panFolder = zip.folder(alloc.clientPAN);
+            
+            if (panFolder) {
+              // Fetch the raw blob for every file and place it in the correct subfolder
+              await Promise.all(data.files.map(async (f: any) => {
+                try {
+                  const fileRes = await fetch(f.url);
+                  if (!fileRes.ok) throw new Error("Failed to fetch blob");
+                  const blob = await fileRes.blob();
+                  
+                  // Structure: [PAN_NUMBER] / Folder-[1-4] / [filename.pdf]
+                  panFolder.file(`Folder-${f.folder}/${f.name}`, blob);
+                } catch (e) {
+                  console.error(`Failed to fetch blob for ${f.name}`);
+                }
+              }));
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching files for allocation", alloc.id);
         }
-      } catch (err) {
-        console.error("Bulk download error for allocation", alloc.id);
       }
+
+      if (!hasFiles) {
+        setAdminMessage("No files found to download in the current filter view.");
+        setTimeout(() => setAdminMessage(null), 4000);
+        return;
+      }
+
+      setAdminMessage("Generating ZIP file... This may take a few moments for large files.");
+      
+      // Generate the final ZIP file in the browser's memory
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const downloadUrl = window.URL.createObjectURL(zipBlob);
+      
+      // Trigger the browser to download it
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `SCC_Bulk_Export_${selectedYear || 'All_Years'}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      setAdminMessage("Bulk download completed successfully!");
+      setTimeout(() => setAdminMessage(null), 5000);
+    } catch (error) {
+      console.error("ZIP Generation failed", error);
+      setAdminMessage("Critical error generating the ZIP archive.");
     }
   };
 
@@ -430,7 +478,7 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* TAB 0: STATUS MONITOR (NEW) */}
+      {/* TAB 0: STATUS MONITOR */}
       {activeTab === "monitor" && (
         <div className="space-y-6">
           {/* KPI Cards */}
@@ -530,7 +578,7 @@ export default function AdminDashboard() {
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <h3 className="font-bold text-slate-900 text-sm">Tracking State Monitor</h3>
               <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full xl:w-auto">
-                {/* NEW: Universal Search Bar */}
+                {/* Universal Search Bar */}
                 <input
                   type="text"
                   placeholder="Search PAN, Client, or Staff..."
@@ -539,7 +587,7 @@ export default function AdminDashboard() {
                   className="bg-white border text-xs rounded-lg py-1.5 px-3 text-slate-700 w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <button onClick={handleBulkDownload} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition-colors w-full sm:w-auto whitespace-nowrap">
-                  📥 Bulk Download All
+                  📥 Bulk Download ZIP
                 </button>
                 <select className="bg-white border text-xs rounded-lg py-1.5 px-2 text-slate-700 w-full sm:w-auto" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
                   <option value="">Full Compilation Matrix</option>
@@ -564,7 +612,6 @@ export default function AdminDashboard() {
                       <tr key={allocation.id} className="hover:bg-slate-50 align-top">
                         <td className="py-4 px-4 text-slate-400 font-medium">{index + 1}</td>
                         <td className="py-4 px-4">
-                          {/* NEW: Displays Client Name over PAN */}
                           <p className="font-bold text-slate-800">{allocation.client?.name || "Unknown"}</p>
                           <p className="font-mono text-slate-500 text-xs mt-1">PAN: {allocation.clientPAN}</p>
                         </td>
