@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface Allocation {
   id: string;
@@ -10,6 +10,8 @@ interface Allocation {
   status: string;
   billingStatus: string;
   comments?: string;
+  client?: { name: string };
+  staff?: { name: string };
 }
 
 interface User {
@@ -27,18 +29,21 @@ const ALL_ASSESSMENT_YEARS = [
   "2022-23",
 ];
 
-type TabType = "allocations" | "onboarding" | "directory" | "settings";
+type TabType = "monitor" | "allocations" | "onboarding" | "directory" | "settings";
 
 export default function AdminDashboard() {
-  // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<TabType>("allocations");
+  // Navigation Tabs (Monitor is now default)
+  const [activeTab, setActiveTab] = useState<TabType>("monitor");
 
   // Core Data States
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [filteredAllocations, setFilteredAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Search & Filter
   const [selectedYear, setSelectedYear] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   
   // Document Viewer State
   const [expandedDocs, setExpandedDocs] = useState<Record<string, any[]>>({});
@@ -66,21 +71,73 @@ export default function AdminDashboard() {
     fetchAllocations();
   }, []);
 
-  // Fetch users automatically when the directory tab is clicked for the first time
   useEffect(() => {
     if (activeTab === "directory" && usersList.length === 0) {
       fetchUsers();
     }
   }, [activeTab]);
 
+  // Unified Filter Logic (Year + Search)
   useEffect(() => {
+    let result = allocations;
+    
     if (selectedYear) {
-      setFilteredAllocations(allocations.filter((a) => a.assessmentYear === selectedYear));
-    } else {
-      setFilteredAllocations(allocations);
+      result = result.filter((a) => a.assessmentYear === selectedYear);
     }
-  }, [selectedYear, allocations]);
+    
+    if (searchQuery.trim() !== "") {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter((a) => 
+        a.clientPAN.toLowerCase().includes(lowerQuery) ||
+        (a.client?.name || "").toLowerCase().includes(lowerQuery) ||
+        a.staffID.toLowerCase().includes(lowerQuery) ||
+        (a.staff?.name || "").toLowerCase().includes(lowerQuery)
+      );
+    }
+    
+    setFilteredAllocations(result);
+  }, [selectedYear, searchQuery, allocations]);
 
+  // LEADERBOARD & METRIC CALCULATIONS
+  const dashboardMetrics = useMemo(() => {
+    const totalAssigned = allocations.length;
+    const totalCompleted = allocations.filter(a => ["Filed", "Verified"].includes(a.status)).length;
+    const totalPending = allocations.filter(a => !["Filed", "Verified", "Rejected"].includes(a.status)).length;
+    return { totalAssigned, totalCompleted, totalPending };
+  }, [allocations]);
+
+  const staffStats = useMemo(() => {
+    const stats: Record<string, any> = {};
+    allocations.forEach(a => {
+      const staffKey = a.staffID;
+      if (!stats[staffKey]) {
+        stats[staffKey] = {
+          staffName: a.staff?.name || a.staffID,
+          allocated: 0,
+          completed: 0,
+          pending: 0,
+          rejected: 0
+        };
+      }
+      stats[staffKey].allocated += 1;
+      
+      if (["Filed", "Verified"].includes(a.status)) {
+        stats[staffKey].completed += 1;
+      } else if (a.status === "Rejected") {
+        stats[staffKey].rejected += 1;
+      } else {
+        stats[staffKey].pending += 1;
+      }
+    });
+
+    return Object.values(stats).map(s => ({
+      ...s,
+      completionPct: s.allocated > 0 ? ((s.completed / s.allocated) * 100).toFixed(1) : 0,
+      rejectedPct: s.allocated > 0 ? ((s.rejected / s.allocated) * 100).toFixed(1) : 0
+    })).sort((a, b) => b.completionPct - a.completionPct);
+  }, [allocations]);
+
+  // API Methods
   const fetchAllocations = async () => {
     try {
       setLoading(true);
@@ -166,7 +223,9 @@ export default function AdminDashboard() {
       const res = await fetch(`/api/admin/allocation-files?id=${allocationId}`);
       const data = await res.json();
       setExpandedDocs(prev => ({ ...prev, [allocationId]: data.files || [] }));
-    } catch (err) { console.error("Failed to fetch files"); }
+    } catch (err) {
+      console.error("Failed to fetch files");
+    }
   };
 
   const handleDeleteFile = async (allocationId: string, folder: number, filename: string) => {
@@ -181,6 +240,7 @@ export default function AdminDashboard() {
       else alert("Failed to delete file.");
     } catch (e) { alert("Error deleting file."); }
   };
+
   const downloadAllocationTemplate = () => {
     const headers = "PAN;Client Name;StaffID;AssessmentYear\n";
     const sample = "BYMPP7794N;Client Sharma;Staff_1;2026-27\n"; 
@@ -255,7 +315,6 @@ export default function AdminDashboard() {
       if (res.ok) {
         setUserMessage(`Ingestion successful. Users synchronized.`);
         setUserFile(null);
-        // Automatically refresh directory if we are on that tab
         fetchUsers(); 
       } else {
         setUserMessage(data.error || "Profile validation mapping exception.");
@@ -300,7 +359,7 @@ export default function AdminDashboard() {
         setAdminMessage("Secondary administrator profile initialized.");
         setNewAdminUsername("");
         setNewAdminPassword("");
-        fetchUsers(); // Refresh the directory automatically
+        fetchUsers(); 
       } else {
         setAdminMessage("Profile setup execution error.");
       }
@@ -329,6 +388,14 @@ export default function AdminDashboard() {
 
       {/* Navigation Tab Bar */}
       <div className="flex border-b border-slate-200 mb-8 space-x-2 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab("monitor")}
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "monitor" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          }`}
+        >
+          Status Monitor
+        </button>
         <button
           onClick={() => setActiveTab("allocations")}
           className={`py-2 px-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap ${
@@ -363,6 +430,81 @@ export default function AdminDashboard() {
         </button>
       </div>
 
+      {/* TAB 0: STATUS MONITOR (NEW) */}
+      {activeTab === "monitor" && (
+        <div className="space-y-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+              <span className="text-sm font-bold text-slate-500 mb-1">Total Assigned</span>
+              <span className="text-4xl font-extrabold text-blue-600">{dashboardMetrics.totalAssigned}</span>
+            </div>
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+              <span className="text-sm font-bold text-slate-500 mb-1">Total Completed</span>
+              <span className="text-4xl font-extrabold text-emerald-600">{dashboardMetrics.totalCompleted}</span>
+            </div>
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+              <span className="text-sm font-bold text-slate-500 mb-1">Total Pending</span>
+              <span className="text-4xl font-extrabold text-amber-500">{dashboardMetrics.totalPending}</span>
+            </div>
+          </div>
+
+          {/* Staff Leaderboard */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200">
+              <h3 className="font-bold text-slate-900 text-sm">Staff Leaderboard</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Rank</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Staff Name</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Allocated</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Fully Complete</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Completion %</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">Pending</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500">% Rejected</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white text-sm">
+                  {staffStats.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-slate-400">No active staff allocations found.</td>
+                    </tr>
+                  ) : (
+                    staffStats.map((staff, index) => (
+                      <tr key={staff.staffName} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-4 font-bold text-slate-400">#{index + 1}</td>
+                        <td className="py-3 px-4 font-bold text-slate-800">{staff.staffName}</td>
+                        <td className="py-3 px-4 font-medium text-slate-600">{staff.allocated}</td>
+                        <td className="py-3 px-4 font-medium text-emerald-600">{staff.completed}</td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                            Number(staff.completionPct) >= 80 ? "bg-emerald-100 text-emerald-800" :
+                            Number(staff.completionPct) >= 40 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
+                          }`}>
+                            {staff.completionPct}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-600">{staff.pending}</td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                            Number(staff.rejectedPct) > 20 ? "bg-rose-100 text-rose-800" : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {staff.rejectedPct}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TAB 1: ALLOCATIONS */}
       {activeTab === "allocations" && (
         <div className="space-y-6">
@@ -385,13 +527,21 @@ export default function AdminDashboard() {
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <h3 className="font-bold text-slate-900 text-sm">Tracking State Monitor</h3>
-              <div className="flex items-center space-x-4">
-                <button onClick={handleBulkDownload} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition-colors">
-                  📥 Bulk Download All Docs
+              <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full xl:w-auto">
+                {/* NEW: Universal Search Bar */}
+                <input
+                  type="text"
+                  placeholder="Search PAN, Client, or Staff..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-white border text-xs rounded-lg py-1.5 px-3 text-slate-700 w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button onClick={handleBulkDownload} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition-colors w-full sm:w-auto whitespace-nowrap">
+                  📥 Bulk Download All
                 </button>
-                <select className="bg-white border text-xs rounded-lg py-1 px-2 text-slate-700" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
+                <select className="bg-white border text-xs rounded-lg py-1.5 px-2 text-slate-700 w-full sm:w-auto" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
                   <option value="">Full Compilation Matrix</option>
                   {ALL_ASSESSMENT_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
@@ -403,7 +553,7 @@ export default function AdminDashboard() {
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">Idx</th>
-                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Client PAN</th>
+                      <th className="py-3 px-4 text-xs font-bold text-slate-500">Client Info</th>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">Assigned Auditor</th>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">State Code</th>
                       <th className="py-3 px-4 text-xs font-bold text-slate-500">System Pipeline Hooks</th>
@@ -412,13 +562,20 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-slate-200 bg-white text-sm">
                     {filteredAllocations.map((allocation, index) => (
                       <tr key={allocation.id} className="hover:bg-slate-50 align-top">
-                        <td className="py-3 px-4 text-slate-400 font-medium">{index + 1}</td>
-                        <td className="py-3 px-4 font-mono font-semibold text-slate-700">{allocation.clientPAN}</td>
-                        <td className="py-3 px-4 text-slate-600 font-medium">{allocation.staffID}</td>
-                        <td className="py-3 px-4">
+                        <td className="py-4 px-4 text-slate-400 font-medium">{index + 1}</td>
+                        <td className="py-4 px-4">
+                          {/* NEW: Displays Client Name over PAN */}
+                          <p className="font-bold text-slate-800">{allocation.client?.name || "Unknown"}</p>
+                          <p className="font-mono text-slate-500 text-xs mt-1">PAN: {allocation.clientPAN}</p>
+                        </td>
+                        <td className="py-4 px-4">
+                          <p className="font-bold text-slate-800">{allocation.staff?.name || "Unknown"}</p>
+                          <p className="text-slate-500 text-xs mt-1">ID: {allocation.staffID}</p>
+                        </td>
+                        <td className="py-4 px-4">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${allocation.status === "Filed" ? "bg-green-100 text-green-800" : allocation.status === "Rejected" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`}>{allocation.status}</span>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-4 px-4">
                           {allocation.status === "COI_Ready" && (
                             <div className="flex space-x-2 mb-2">
                               <button onClick={() => handleStatusUpdate(allocation.id, "Ready_to_upload")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1 px-3 rounded-md text-xs">Approve</button>
@@ -427,7 +584,6 @@ export default function AdminDashboard() {
                           )}
                           {allocation.status === "Rejected" && <p className="text-rose-600 text-xs italic mb-2">Log: {allocation.comments}</p>}
                           
-                          {/* Document Viewer Expander */}
                           <button onClick={() => handleViewFiles(allocation.id)} className="text-blue-600 hover:underline text-xs font-bold flex items-center mt-1">
                             {expandedDocs[allocation.id] ? "▼ Hide Documents" : "▶ Review Documents"}
                           </button>
@@ -436,16 +592,16 @@ export default function AdminDashboard() {
                             <div className="mt-2 p-2 bg-slate-100 rounded border border-slate-200 text-xs w-max min-w-[250px]">
                               {expandedDocs[allocation.id].length === 0 ? <span className="text-slate-500 italic">No files uploaded yet.</span> : 
                                 expandedDocs[allocation.id].map((file: any, i: number) => (
-                                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0 gap-4">
-    <span className="truncate max-w-[200px] font-mono text-slate-700" title={file.name}>
-      <span className="text-slate-400 mr-1">[{file.folder}]</span>
-      {file.name}
-    </span>
-    <div className="flex space-x-2">
-      <a href={file.url} download target="_blank" className="text-blue-600 hover:text-blue-800 font-bold whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded">Download</a>
-      <button onClick={() => handleDeleteFile(allocation.id, file.folder, file.name)} className="text-red-600 hover:text-red-800 font-bold bg-red-50 px-2 py-0.5 rounded">Delete</button>
-    </div>
-  </div>
+                                  <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0 gap-4">
+                                    <span className="truncate max-w-[200px] font-mono text-slate-700" title={file.name}>
+                                      <span className="text-slate-400 mr-1">[{file.folder}]</span>
+                                      {file.name}
+                                    </span>
+                                    <div className="flex space-x-2">
+                                      <a href={file.url} download target="_blank" className="text-blue-600 hover:text-blue-800 font-bold whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded">Download</a>
+                                      <button onClick={() => handleDeleteFile(allocation.id, file.folder, file.name)} className="text-red-600 hover:text-red-800 font-bold bg-red-50 px-2 py-0.5 rounded">Delete</button>
+                                    </div>
+                                  </div>
                                 ))
                               }
                             </div>
