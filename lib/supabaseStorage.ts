@@ -17,26 +17,27 @@ export async function listFiles(pan: string, assessmentYear: string) {
     const { data, error } = await supabase.storage.from(BUCKET_NAME).list(path);
     
     if (data && data.length > 0) {
-      // Filter out empty placeholder files
       const validFiles = data.filter(f => f.name !== '.emptyFolderPlaceholder');
       
       if (validFiles.length > 0) {
-        // Create an array of exactly what paths we need to sign
         const filePaths = validFiles.map(f => `${path}/${f.name}`);
         
-        // SECURITY UPDATE: Generate Signed URLs valid for only 60 seconds.
-        // We also pass { download: true } so the browser automatically downloads the file securely.
         const { data: signedUrls, error: signError } = await supabase.storage
           .from(BUCKET_NAME)
           .createSignedUrls(filePaths, 60, { download: true });
 
         if (signedUrls && !signError) {
           validFiles.forEach((fileObj, index) => {
-            allFiles.push({ 
-              folder: i, 
-              name: fileObj.name, 
-              url: signedUrls[index].signedUrl 
-            });
+            // FIX: Safely extract the URL and check if it is not null
+            const generatedUrl = signedUrls[index]?.signedUrl;
+            
+            if (generatedUrl) {
+              allFiles.push({ 
+                folder: i, 
+                name: fileObj.name, 
+                url: generatedUrl 
+              });
+            }
           });
         }
       }
