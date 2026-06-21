@@ -155,9 +155,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleViewFiles = async (allocationId: string) => {
-    if (expandedDocs[allocationId]) {
-      // Toggle off if already open
+  const handleViewFiles = async (allocationId: string, forceRefresh = false) => {
+    if (expandedDocs[allocationId] && !forceRefresh) {
       const newDocs = { ...expandedDocs };
       delete newDocs[allocationId];
       setExpandedDocs(newDocs);
@@ -166,12 +165,22 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`/api/admin/allocation-files?id=${allocationId}`);
       const data = await res.json();
-      setExpandedDocs({ ...expandedDocs, [allocationId]: data.files || [] });
-    } catch (err) {
-      console.error("Failed to fetch files");
-    }
+      setExpandedDocs(prev => ({ ...prev, [allocationId]: data.files || [] }));
+    } catch (err) { console.error("Failed to fetch files"); }
   };
 
+  const handleDeleteFile = async (allocationId: string, folder: number, filename: string) => {
+    if (!confirm(`Are you sure you want to permanently delete ${filename}?`)) return;
+    try {
+      const res = await fetch("/api/admin/delete-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allocationId, folder, filename })
+      });
+      if (res.ok) handleViewFiles(allocationId, true);
+      else alert("Failed to delete file.");
+    } catch (e) { alert("Error deleting file."); }
+  };
   const downloadAllocationTemplate = () => {
     const headers = "PAN;Client Name;StaffID;AssessmentYear\n";
     const sample = "BYMPP7794N;Client Sharma;Staff_1;2026-27\n"; 
@@ -427,15 +436,16 @@ export default function AdminDashboard() {
                             <div className="mt-2 p-2 bg-slate-100 rounded border border-slate-200 text-xs w-max min-w-[250px]">
                               {expandedDocs[allocation.id].length === 0 ? <span className="text-slate-500 italic">No files uploaded yet.</span> : 
                                 expandedDocs[allocation.id].map((file: any, i: number) => (
-                                  <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0 gap-4">
-                                    <span className="truncate max-w-[200px] font-mono text-slate-700" title={file.name}>
-                                      <span className="text-slate-400 mr-1">[{file.folder}]</span>
-                                      {file.name}
-                                    </span>
-                                    <a href={file.url} download target="_blank" className="text-blue-600 hover:text-blue-800 font-bold whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded">
-                                      Download
-                                    </a>
-                                  </div>
+                                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0 gap-4">
+    <span className="truncate max-w-[200px] font-mono text-slate-700" title={file.name}>
+      <span className="text-slate-400 mr-1">[{file.folder}]</span>
+      {file.name}
+    </span>
+    <div className="flex space-x-2">
+      <a href={file.url} download target="_blank" className="text-blue-600 hover:text-blue-800 font-bold whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded">Download</a>
+      <button onClick={() => handleDeleteFile(allocation.id, file.folder, file.name)} className="text-red-600 hover:text-red-800 font-bold bg-red-50 px-2 py-0.5 rounded">Delete</button>
+    </div>
+  </div>
                                 ))
                               }
                             </div>
