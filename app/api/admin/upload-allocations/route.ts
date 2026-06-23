@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, AllocationStatus } from "@prisma/client"; // <-- NEW: Imported Enum
 import * as xlsx from "xlsx";
 
 const prisma = new PrismaClient();
@@ -15,7 +15,6 @@ const ALLOWED_ASSESSMENT_YEARS = [
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    // Front-end now sends this under the key 'file' instead of 'csvFile'
     const file = formData.get("file") as File;
 
     if (!file) {
@@ -45,7 +44,8 @@ export async function POST(request: Request) {
         clientPAN: record.PAN,
         staffID: record.StaffID,
         assessmentYear: record.AssessmentYear,
-        status: "Allocated", 
+        // FIX: Explicitly cast the string as the Prisma AllocationStatus Enum
+        status: "Allocated" as AllocationStatus, 
         billingStatus: "Unbilled", 
       });
     }
