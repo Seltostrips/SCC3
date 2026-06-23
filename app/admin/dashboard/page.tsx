@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import JSZip from "jszip";
+import * as xlsx from "xlsx";
 
 interface Allocation {
   id: string;
@@ -188,7 +189,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // RE-ENGINEERED: ZIP FOLDER DOWNLOADER
   const handleBulkDownload = async () => {
     if (!confirm("This will compile and download a single ZIP file preserving the exact folder structure (PAN -> Folder 1/2/3/4) for all currently filtered allocations. This might take a minute. Are you sure?")) return;
     
@@ -198,7 +198,6 @@ export default function AdminDashboard() {
       const zip = new JSZip();
       let hasFiles = false;
 
-      // Loop through all currently filtered allocations
       for (const alloc of filteredAllocations) {
         try {
           const res = await fetch(`/api/admin/allocation-files?id=${alloc.id}`);
@@ -206,19 +205,14 @@ export default function AdminDashboard() {
           
           if (data.files && data.files.length > 0) {
             hasFiles = true;
-            
-            // Create the Master Folder for this specific Client's PAN
             const panFolder = zip.folder(alloc.clientPAN);
             
             if (panFolder) {
-              // Fetch the raw blob for every file and place it in the correct subfolder
               await Promise.all(data.files.map(async (f: any) => {
                 try {
                   const fileRes = await fetch(f.url);
                   if (!fileRes.ok) throw new Error("Failed to fetch blob");
                   const blob = await fileRes.blob();
-                  
-                  // Structure: [PAN_NUMBER] / Folder-[1-4] / [filename.pdf]
                   panFolder.file(`Folder-${f.folder}/${f.name}`, blob);
                 } catch (e) {
                   console.error(`Failed to fetch blob for ${f.name}`);
@@ -239,11 +233,9 @@ export default function AdminDashboard() {
 
       setAdminMessage("Generating ZIP file... This may take a few moments for large files.");
       
-      // Generate the final ZIP file in the browser's memory
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const downloadUrl = window.URL.createObjectURL(zipBlob);
       
-      // Trigger the browser to download it
       const a = document.createElement("a");
       a.href = downloadUrl;
       a.download = `SCC_Bulk_Export_${selectedYear || 'All_Years'}.zip`;
@@ -289,39 +281,37 @@ export default function AdminDashboard() {
     } catch (e) { alert("Error deleting file."); }
   };
 
+  // NATIVE EXCEL TEMPLATE GENERATORS
   const downloadAllocationTemplate = () => {
-    const headers = "PAN;Client Name;StaffID;AssessmentYear\n";
-    const sample = "BYMPP7794N;Client Sharma;Staff_1;2026-27\n"; 
-    const blob = new Blob([headers + sample], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "allocation_template.csv";
-    a.click();
+    const ws = xlsx.utils.json_to_sheet([
+      { PAN: "BYMPP7794N", "Client Name": "Client Sharma", StaffID: "Staff_1", AssessmentYear: "2026-27" }
+    ]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Allocations");
+    xlsx.writeFile(wb, "allocation_template.xlsx");
   };
 
   const downloadUserTemplate = () => {
-    const headers = "role;username;password;name;pan;email;phone\n";
-    const sampleStaff = "staff;Staff_1;Staff_1@123;Staff Verma;;staff@gmail.com;9999999999\n";
-    const sampleClient = "client;Client_1;Client_1@123;Client Sharma;BYMPP7794N;client@gmail.com;112233445\n";
-    const blob = new Blob([headers + sampleStaff + sampleClient], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "user_onboarding_template.csv";
-    a.click();
+    const ws = xlsx.utils.json_to_sheet([
+      { role: "staff", username: "Staff_1", password: "Staff_1@123", name: "Staff Verma", pan: "", email: "staff@gmail.com", phone: "9999999999" },
+      { role: "client", username: "Client_1", password: "Client_1@123", name: "Client Sharma", pan: "BYMPP7794N", email: "client@gmail.com", phone: "112233445" }
+    ]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Users");
+    xlsx.writeFile(wb, "user_onboarding_template.xlsx");
   };
 
   const handleAllocationUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocationFile) {
-      setAllocationMessage("Execution halted: Missing target CSV file payload.");
+      setAllocationMessage("Execution halted: Missing target Excel file payload.");
       return;
     }
     setUploadingAllocations(true);
     setAllocationMessage("Processing parser stream...");
     const formData = new FormData();
-    formData.append("csvFile", allocationFile);
+    // CHANGED: "csvFile" -> "file"
+    formData.append("file", allocationFile);
 
     try {
       const res = await fetch("/api/admin/upload-allocations", {
@@ -346,13 +336,14 @@ export default function AdminDashboard() {
   const handleUserUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFile) {
-      setUserMessage("Execution halted: Missing target profile CSV payload.");
+      setUserMessage("Execution halted: Missing target profile Excel payload.");
       return;
     }
     setUploadingUsers(true);
     setUserMessage("Streaming user ingestion parameters...");
     const formData = new FormData();
-    formData.append("csvFile", userFile);
+    // CHANGED: "csvFile" -> "file"
+    formData.append("file", userFile);
 
     try {
       const res = await fetch("/api/admin/upload-users", {
@@ -481,7 +472,6 @@ export default function AdminDashboard() {
       {/* TAB 0: STATUS MONITOR */}
       {activeTab === "monitor" && (
         <div className="space-y-6">
-          {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
               <span className="text-sm font-bold text-slate-500 mb-1">Total Assigned</span>
@@ -497,7 +487,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Staff Leaderboard */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 bg-slate-50 border-b border-slate-200">
               <h3 className="font-bold text-slate-900 text-sm">Staff Leaderboard</h3>
@@ -562,11 +551,12 @@ export default function AdminDashboard() {
                 <h2 className="text-lg font-bold text-slate-900">Ingest Allocation Structure</h2>
               </div>
               <button onClick={downloadAllocationTemplate} className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold">
-                Get Allocation CSV Schema
+                Get Allocation Excel Schema
               </button>
             </div>
             <form onSubmit={handleAllocationUpload} className="flex flex-col sm:flex-row items-center gap-4">
-              <input type="file" accept=".csv" onChange={(e) => setAllocationFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+              {/* ACCEPT ONLY EXCEL */}
+              <input type="file" accept=".xlsx, .xls" onChange={(e) => setAllocationFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
               <button type="submit" disabled={!allocationFile || uploadingAllocations} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg whitespace-nowrap">
                 {uploadingAllocations ? "Parsing..." : "Execute Mass Upload"}
               </button>
@@ -578,7 +568,6 @@ export default function AdminDashboard() {
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <h3 className="font-bold text-slate-900 text-sm">Tracking State Monitor</h3>
               <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full xl:w-auto">
-                {/* Universal Search Bar */}
                 <input
                   type="text"
                   placeholder="Search PAN, Client, or Staff..."
@@ -671,11 +660,12 @@ export default function AdminDashboard() {
             <div>
               <h2 className="text-xl font-bold text-slate-900">Onboard Users Pool</h2>
             </div>
-            <button onClick={downloadUserTemplate} className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold">Get User Layout Sheet</button>
+            <button onClick={downloadUserTemplate} className="text-blue-600 hover:text-blue-800 underline text-xs font-semibold">Get User Excel Layout</button>
           </div>
           <form onSubmit={handleUserUpload} className="space-y-4">
             <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex justify-center py-8">
-              <input type="file" accept=".csv" onChange={(e) => setUserFile(e.target.files?.[0] || null)} className="block text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+              {/* ACCEPT ONLY EXCEL */}
+              <input type="file" accept=".xlsx, .xls" onChange={(e) => setUserFile(e.target.files?.[0] || null)} className="block text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg border file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
             </div>
             <button type="submit" disabled={!userFile || uploadingUsers} className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold text-sm py-2 px-6 rounded-lg">
               {uploadingUsers ? "Syncing..." : "Commit Batch Onboarding"}
