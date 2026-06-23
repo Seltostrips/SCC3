@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import * as xlsx from "xlsx";
 
@@ -11,31 +11,36 @@ export async function POST(request: Request) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ message: "Excel file required" }, { status: 400 });
+      return NextResponse.json({ message: "Upload Halted: Please select an Excel file before submitting." }, { status: 400 });
     }
 
-    // 1. Read the Excel File
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const workbook = xlsx.read(buffer, { type: "buffer" });
-    
-    // Convert the first sheet to a JSON array
     const records: any[] = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
 
-    // 2. Prepare the users for the database
+    // Pre-flight check: Is the file empty?
+    if (records.length === 0) {
+      return NextResponse.json({ message: "Upload Halted: The provided Excel file contains no data." }, { status: 400 });
+    }
+
+    // Pre-flight check: Are the headers correct?
+    const firstRecord = records[0];
+    if (!firstRecord.username || !firstRecord.role || !firstRecord.password) {
+      return NextResponse.json({ message: "Upload Halted: Missing required columns. Ensure your Excel headers exactly match: 'role', 'username', 'password', and 'name'." }, { status: 400 });
+    }
+
     const usersToCreate = [];
     for (const record of records) {
-      // Adjusted to match the exact lowercase headers from the new template
-      const hashedPassword = await bcrypt.hash(record.password, 10);
+      const hashedPassword = await bcrypt.hash(record.password.toString(), 10);
       usersToCreate.push({
-        username: record.username, 
-        name: record.name || "Unknown User",
-        role: record.role.toUpperCase(), // Ensures 'staff' becomes 'STAFF'
+        username: record.username.toString(), 
+        name: record.name ? record.name.toString() : "Unknown User",
+        role: record.role.toString().toUpperCase(), 
         password: hashedPassword,
       });
     }
 
-    // 3. Upsert using a Prisma transaction to ensure all-or-nothing saving
     await prisma.$transaction(
       usersToCreate.map((user) =>
         prisma.user.upsert({
@@ -46,9 +51,18 @@ export async function POST(request: Request) {
       )
     );
 
-    return NextResponse.json({ message: "Users uploaded successfully" });
+    return NextResponse.json({ message: "Users onboarded and synchronized successfully!" });
+
   } catch (error) {
     console.error("Admin Excel upload (users) error:", error);
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    
+    // Human-Readable Error Interceptor
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        return NextResponse.json({ message: "Upload Halted: One or more usernames in this file already exist and caused a conflict." }, { status: 400 });
+      }
+    }
+
+    return NextResponse.json({ message: "A system error occurred while processing the file. Please try again." }, { status: 500 });
   }
 }
