@@ -1,27 +1,28 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { parse } from "csv-parse/sync";
+import * as xlsx from "xlsx";
 
 const prisma = new PrismaClient();
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const csvFile = formData.get("csvFile") as File;
+    const file = formData.get("file") as File;
 
-    if (!csvFile) {
-      return NextResponse.json({ message: "CSV file is required" }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ message: "Excel file required" }, { status: 400 });
     }
 
-    const fileContent = await csvFile.text();
-    // Added delimiter: ";" to handle the new template format
-    const records: any[] = parse(fileContent, { 
-      columns: true, 
-      skip_empty_lines: true,
-      delimiter: ";" 
-    });
+    // 1. Read the Excel File
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const workbook = xlsx.read(buffer, { type: "buffer" });
+    
+    // Convert the first sheet to a JSON array
+    const records: any[] = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
 
+    // 2. Prepare the users for the database
     const usersToCreate = [];
     for (const record of records) {
       // Adjusted to match the exact lowercase headers from the new template
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Using a transaction to ensure all or nothing
+    // 3. Upsert using a Prisma transaction to ensure all-or-nothing saving
     await prisma.$transaction(
       usersToCreate.map((user) =>
         prisma.user.upsert({
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ message: "Users uploaded successfully" });
   } catch (error) {
-    console.error("Admin CSV upload (users) error:", error);
+    console.error("Admin Excel upload (users) error:", error);
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
