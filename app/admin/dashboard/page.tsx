@@ -38,11 +38,11 @@ export default function AdminDashboard() {
 
   const [allocationFile, setAllocationFile] = useState<File | null>(null);
   const [uploadingAllocations, setUploadingAllocations] = useState(false);
-  const [allocationMessage, setAllocationMessage] = useState<string | null>(null); // FIX: Restored this state
+  const [allocationMessage, setAllocationMessage] = useState<string | null>(null);
 
   const [userFile, setUserFile] = useState<File | null>(null);
   const [uploadingUsers, setUploadingUsers] = useState(false);
-  const [userMessage, setUserMessage] = useState<string | null>(null); // FIX: Restored this state
+  const [userMessage, setUserMessage] = useState<string | null>(null);
 
   useEffect(() => { fetchAllocations(); fetchAuditLogs(); }, []);
   useEffect(() => { if (activeTab === "directory" && usersList.length === 0) fetchUsers(); }, [activeTab]);
@@ -71,7 +71,7 @@ export default function AdminDashboard() {
       { name: "Active / Processing", value: active, color: COLORS.Active },
       { name: "Completed", value: completed, color: COLORS.Completed },
       { name: "Rejected", value: rejected, color: COLORS.Rejected },
-      { name: "On Hold (Late/Pending)", value: onHold, color: COLORS.OnHold } // Bottom grouping
+      { name: "On Hold (Late/Pending)", value: onHold, color: COLORS.OnHold }
     ].filter(d => d.value > 0);
   }, [allocations]);
 
@@ -107,12 +107,11 @@ export default function AdminDashboard() {
     try { const res = await fetch("/api/admin/audit-logs"); setAuditLogs(await res.json()); } catch (err) {}
   };
 
-  // FULL STATUS CONTROLLER FOR ADMIN
   const handleStatusChange = async (allocationId: string, newStatus: string) => {
     let comments = "";
     if (newStatus === "Rejected") {
       const reason = prompt("Enter Rejection Reason for Staff:");
-      if (reason === null) return; // User cancelled
+      if (reason === null) return;
       comments = reason;
     }
     
@@ -197,7 +196,7 @@ export default function AdminDashboard() {
   const handleDeleteFile = async (allocationId: string, folder: number, filename: string) => {
     if (!confirm(`Permanently delete ${filename}?`)) return;
     await fetch("/api/admin/delete-document", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allocationId, folder, filename }) });
-    handleViewFiles(allocationId); // Refresh
+    handleViewFiles(allocationId);
   };
 
   const handleAllocationUpload = async (e: React.FormEvent) => {
@@ -235,6 +234,49 @@ export default function AdminDashboard() {
         setUserMessage(errData.message || "Profile validation mapping exception.");
       }
     } catch (err) { setUserMessage("Gateway processing transaction timed out."); } finally { setUploadingUsers(false); }
+  };
+
+  // RESTORED: Access Control Pipeline Mutators
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminMessage("Evaluating security assertion...");
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword }),
+      });
+      if (res.ok) {
+        setAdminMessage("Root administrative credentials modified successfully.");
+        setNewPassword("");
+      } else {
+        setAdminMessage("Credential mutation rejected.");
+      }
+    } catch (err) {
+      setAdminMessage("Context processing failure.");
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminMessage("Provisioning auxiliary identity...");
+    try {
+      const res = await fetch("/api/admin/create-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newAdminUsername, password: newAdminPassword }),
+      });
+      if (res.ok) {
+        setAdminMessage("Secondary administrator profile initialized.");
+        setNewAdminUsername("");
+        setNewAdminPassword("");
+        fetchUsers(); 
+      } else {
+        setAdminMessage("Profile setup execution error.");
+      }
+    } catch (err) {
+      setAdminMessage("Gateway failure mapping.");
+    }
   };
 
   const downloadAllocationTemplate = () => {
@@ -281,7 +323,6 @@ export default function AdminDashboard() {
                 <span className="text-sm font-bold text-slate-500 mb-1">Work in Progress</span><span className="text-4xl font-extrabold text-amber-500">{dashboardMetrics.totalPending}</span>
               </div>
             </div>
-            {/* ADMIN PIE CHART */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
               <h3 className="font-bold text-slate-700 text-xs mb-2">Global System Status</h3>
               <div className="w-full h-40">
@@ -319,7 +360,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 1: ALLOCATIONS */}
       {activeTab === "allocations" && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -413,7 +453,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 2: AUDIT TRAIL */}
       {activeTab === "audit" && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-6">
