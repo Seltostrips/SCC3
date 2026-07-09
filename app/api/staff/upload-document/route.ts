@@ -25,6 +25,7 @@ export async function POST(request: Request) {
 
     const folder = parseInt(folderStr);
     const allocation = await prisma.allocation.findUnique({ where: { id: allocationId } });
+    
     if (!allocation || allocation.staffID.toLowerCase() !== staffUsername.toLowerCase()) {
       return NextResponse.json({ message: "Forbidden Access" }, { status: 403 });
     }
@@ -39,9 +40,21 @@ export async function POST(request: Request) {
 
     if (files.length === 0) return NextResponse.json({ message: "No files attached" }, { status: 400 });
 
-    // Upload sequentially to Supabase
+    // Upload sequentially to Supabase and log to Audit Trail
     for (const file of files) {
       await uploadFile(file, allocation.clientPAN, allocation.assessmentYear, folder as 1 | 2 | 3 | 4);
+      
+      // NEW: Log the audit trail to the database permanently
+      await prisma.auditLog.create({
+        data: {
+          clientPAN: allocation.clientPAN,
+          assessmentYear: allocation.assessmentYear,
+          staffID: staffUsername,
+          filename: file.name,
+          folder: folder,
+          action: "UPLOADED"
+        }
+      });
     }
 
     return NextResponse.json({ message: `Successfully uploaded ${files.length} document(s)!` });
