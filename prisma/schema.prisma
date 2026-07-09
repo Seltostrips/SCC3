@@ -17,6 +17,8 @@ enum Role {
 enum AllocationStatus {
   Unallocated
   Allocated
+  LateFilling
+  PendingWithClient
   COI_Ready
   Ready_to_upload
   Rejected
@@ -50,4 +52,15 @@ model Allocation {
 
   @@unique([clientPAN, assessmentYear])
   @@map("allocations")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  clientPAN      String
+  assessmentYear String
+  staffID        String
+  filename       String
+  folder         Int
+  action         String
+  timestamp      DateTime @default(now())
 }
