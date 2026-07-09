@@ -38,8 +38,11 @@ export default function AdminDashboard() {
 
   const [allocationFile, setAllocationFile] = useState<File | null>(null);
   const [uploadingAllocations, setUploadingAllocations] = useState(false);
+  const [allocationMessage, setAllocationMessage] = useState<string | null>(null); // FIX: Restored this state
+
   const [userFile, setUserFile] = useState<File | null>(null);
   const [uploadingUsers, setUploadingUsers] = useState(false);
+  const [userMessage, setUserMessage] = useState<string | null>(null); // FIX: Restored this state
 
   useEffect(() => { fetchAllocations(); fetchAuditLogs(); }, []);
   useEffect(() => { if (activeTab === "directory" && usersList.length === 0) fetchUsers(); }, [activeTab]);
@@ -177,7 +180,6 @@ export default function AdminDashboard() {
     } catch (error) { setAdminMessage("Error generating ZIP."); }
   };
 
-  // FIX: Properly await the JSON outside the state setter to satisfy the compiler
   const handleViewFiles = async (allocationId: string) => {
     if (expandedDocs[allocationId]) {
       const newDocs = { ...expandedDocs }; 
@@ -198,7 +200,6 @@ export default function AdminDashboard() {
     handleViewFiles(allocationId); // Refresh
   };
 
-  // FIX: Safely parse error messages
   const handleAllocationUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocationFile) return;
@@ -221,11 +222,19 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!userFile) return;
     setUploadingUsers(true);
+    setUserMessage("Streaming user ingestion parameters...");
     const formData = new FormData(); formData.append("file", userFile);
     try {
       const res = await fetch("/api/admin/upload-users", { method: "POST", body: formData });
-      if (res.ok) { setUserFile(null); fetchUsers(); }
-    } catch (err) {} finally { setUploadingUsers(false); }
+      if (res.ok) { 
+        setUserMessage(`Ingestion successful. Users synchronized.`);
+        setUserFile(null); 
+        fetchUsers(); 
+      } else {
+        const errData = await res.json();
+        setUserMessage(errData.message || "Profile validation mapping exception.");
+      }
+    } catch (err) { setUserMessage("Gateway processing transaction timed out."); } finally { setUploadingUsers(false); }
   };
 
   const downloadAllocationTemplate = () => {
@@ -360,7 +369,6 @@ export default function AdminDashboard() {
                       <td className="py-4 px-4"><p className="font-bold">{allocation.client?.name}</p><p className="font-mono text-slate-500 text-xs">PAN: {allocation.clientPAN}</p></td>
                       <td className="py-4 px-4"><p className="font-bold">{allocation.staff?.name}</p><p className="text-slate-500 text-xs">ID: {allocation.staffID}</p></td>
                       <td className="py-4 px-4">
-                        {/* ADMIN STATUS DROPDOWN SUPERPOWER */}
                         <select 
                           value={allocation.status} 
                           onChange={(e) => handleStatusChange(allocation.id, e.target.value)}
@@ -450,8 +458,9 @@ export default function AdminDashboard() {
           </div>
           <form onSubmit={handleUserUpload} className="space-y-4">
             <input type="file" accept=".xlsx, .xls" onChange={(e) => setUserFile(e.target.files?.[0] || null)} className="block w-full border p-4 bg-slate-50 rounded" />
-            <button type="submit" disabled={!userFile} className="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg">Commit Onboarding</button>
+            <button type="submit" disabled={!userFile || uploadingUsers} className="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg">{uploadingUsers ? "Syncing..." : "Commit Onboarding"}</button>
           </form>
+          {userMessage && <p className={`mt-3 text-xs font-medium ${userMessage.includes("successful") ? "text-green-600" : "text-red-600"}`}>{userMessage}</p>}
         </div>
       )}
       
